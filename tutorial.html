@@ -1,0 +1,520 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>nanobot WebSocket 通道实现 · 入门教程</title>
+<style>
+  :root {
+    --bg:#0f1115; --panel:#161a22; --panel2:#1d222c; --line:#282e3a;
+    --text:#e7e9ef; --muted:#9aa3b5; --dim:#6d768a;
+    --blue:#7aa2f7; --teal:#5dcaa5; --amber:#ef9f27; --purple:#afa9ec; --red:#f09595;
+    --mono: ui-monospace, "Cascadia Code", Consolas, monospace;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);
+    font:15px/1.75 system-ui,-apple-system,"Segoe UI","Microsoft YaHei",sans-serif;}
+  .wrap{display:flex;max-width:1280px;margin:0 auto;gap:32px;padding:0 24px}
+  nav{position:sticky;top:0;align-self:flex-start;width:236px;flex:none;
+    padding:28px 0;max-height:100vh;overflow-y:auto}
+  nav .brand{font-size:13px;color:var(--dim);letter-spacing:.06em;margin-bottom:14px}
+  nav a{display:block;color:var(--muted);text-decoration:none;font-size:13.5px;
+    padding:5px 10px;border-left:2px solid transparent;border-radius:0 6px 6px 0}
+  nav a:hover{color:var(--text);background:var(--panel2)}
+  nav a.sub{padding-left:22px;font-size:12.5px;color:var(--dim)}
+  main{flex:1;min-width:0;padding:28px 0 90px}
+  h1{font-size:26px;font-weight:600;margin:0 0 6px}
+  .lede{color:var(--muted);margin:0 0 8px}
+  h2{font-size:19px;font-weight:600;margin:44px 0 12px;padding-top:14px;border-top:1px solid var(--line)}
+  h3{font-size:15.5px;font-weight:600;margin:26px 0 8px;color:var(--text)}
+  p{margin:10px 0}
+  code{font-family:var(--mono);font-size:12.8px;background:var(--panel2);
+    padding:2px 6px;border-radius:5px;color:#c9d5f5}
+  pre{background:#12161d;border:1px solid var(--line);border-radius:10px;
+    padding:14px 16px;overflow-x:auto;margin:12px 0}
+  pre code{background:none;padding:0;color:#cdd6ea;font-size:12.6px;line-height:1.65}
+  .file{font-family:var(--mono);font-size:12.5px;color:var(--teal);background:#12211c;
+    border:1px solid #1e3a30;border-radius:6px;padding:1px 7px;display:inline-block;margin:2px 0}
+  table{width:100%;border-collapse:collapse;margin:14px 0;font-size:13.5px}
+  th,td{text-align:left;padding:9px 11px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{color:var(--muted);font-weight:500;font-size:12.5px;letter-spacing:.03em;
+    background:var(--panel);position:sticky;top:0}
+  td code{font-size:12px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;
+    padding:16px 18px;margin:16px 0}
+  .card h3{margin-top:0}
+  .warn{border-left:3px solid var(--amber);background:#1e1a10;border-radius:0 10px 10px 0;
+    padding:12px 16px;margin:16px 0;font-size:14px}
+  .key{border-left:3px solid var(--teal);background:#0f1e1a;border-radius:0 10px 10px 0;
+    padding:12px 16px;margin:16px 0;font-size:14px}
+  .danger{border-left:3px solid var(--red);background:#1f1414;border-radius:0 10px 10px 0;
+    padding:12px 16px;margin:16px 0;font-size:14px}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  @media(max-width:1000px){nav{display:none}.wrap{padding:0 16px}.grid2{grid-template-columns:1fr}}
+  svg{display:block;width:100%;height:auto;margin:16px 0}
+  .caption{font-size:12.5px;color:var(--dim);text-align:center;margin:-8px 0 20px}
+  ol,ul{padding-left:22px}
+  li{margin:5px 0}
+  .tag{display:inline-block;font-size:11.5px;padding:1px 8px;border-radius:999px;
+    border:1px solid var(--line);color:var(--muted);margin-right:6px}
+  .q{background:var(--panel2);border-radius:10px;padding:14px 18px;margin:12px 0;font-size:14px}
+  .q b{color:var(--purple)}
+  details{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 16px;margin:10px 0}
+  summary{cursor:pointer;color:var(--muted);font-size:14px}
+  details[open] summary{color:var(--text);margin-bottom:8px}
+</style>
+</head>
+<body>
+<div class="wrap">
+<nav>
+  <div class="brand">NANOBOT WS 通道</div>
+  <a href="#quick">0 · 先跑起来</a>
+  <a href="#map">1 · 全景与分层</a>
+  <a href="#handshake">2 · 握手与 ready</a>
+  <a href="#inbound">3 · 入站信封</a>
+  <a href="#subs">4 · 订阅模型与扇出</a>
+  <a href="#outbound">5 · 出站投影</a>
+  <a href="#pressure">6 · 背压（重点）</a>
+  <a href="#lifecycle">7 · 连接生命周期</a>
+  <a href="#map-table">8 · 完整对照表</a>
+  <a href="#pitfalls">9 · 六个坑</a>
+  <a href="#quiz">10 · 自测与练习</a>
+</nav>
+<main>
+
+<h1>nanobot WebSocket 通道实现 · 入门教程</h1>
+<p class="lede">配套可运行项目：<code>nanobot-ws-lab/</code>。每个概念都给出迷你实现片段与我电脑上 nanobot 真实源码的行号对照。</p>
+<p><span class="tag">零依赖</span><span class="tag">15 个测试全绿</span><span class="tag">含协议示波器</span></p>
+
+<h2 id="quick">0 · 先跑起来，再读代码</h2>
+<p>顺序很重要：先看到现象，再去看实现，否则很容易在各层之间迷路。</p>
+<pre><code>cd nanobot-ws-lab
+python run.py                # 监听 127.0.0.1:9988
+# 浏览器打开 http://127.0.0.1:9988/
+# 右侧面板 = 协议示波器，逐条打印原始事件</code></pre>
+<p>敲一句「你好」回车，你会在右边看到这样一串事件——<b>这串事件就是整个通道的"产品"</b>：</p>
+<pre><code>{"event":"ready",     "chat_id":"47076dbc-...", "client_id":"..."}
+{"event":"progress",  "text":"正在思考…",       "kind":"progress"}
+{"event":"message",   "text":"调用工具 read_file(...)", "kind":"tool_hint"}
+{"event":"delta",     "text":"我是迷你版 na",   "stream_id":"stream-47076dbc"}
+{"event":"delta",     "text":"nobot。你刚",     "stream_id":"stream-47076dbc"}
+...（若干 delta）
+{"event":"stream_end","stream_id":"stream-47076dbc"}
+{"event":"message",   "text":"我是迷你版 nanobot。...", "latency_ms":540}</code></pre>
+
+<div class="key"><b>核心认知：</b>WebSocket 通道不产生内容，它只做三件事——<b>把入站的字节翻译成消息</b>、<b>把事件路由到一个或多个连接</b>、<b>保证慢客户端不会拖垮别人</b>。所有花哨功能都建立在这三件事之上。</div>
+
+<h2 id="map">1 · 全景与分层</h2>
+<p>真实实现有五千多行、四十多个文件，但结构极其规整。剥掉工程细节后只剩四层：</p>
+
+<svg viewBox="0 0 680 400" xmlns="http://www.w3.org/2000/svg" role="img">
+<title>WebSocket 通道的四层结构</title>
+<defs><marker id="a" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+<path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></marker></defs>
+
+<rect x="40" y="30" width="120" height="52" rx="9" fill="#23324f" stroke="#7aa2f7" stroke-width="0.5"/>
+<text x="100" y="50" text-anchor="middle" dominant-baseline="central" font-size="13" font-weight="500" fill="#c9d5f5" font-family="system-ui">浏览器 / TUI</text>
+<text x="100" y="68" text-anchor="middle" dominant-baseline="central" font-size="11.5" fill="#7aa2f7" font-family="system-ui">WebSocket 客户端</text>
+
+<line x1="164" y1="56" x2="196" y2="56" stroke="#6d768a" stroke-width="1.5" marker-end="url(#a)"/>
+
+<rect x="200" y="24" width="200" height="64" rx="9" fill="#0c447c" stroke="#85b7eb" stroke-width="0.5"/>
+<text x="300" y="44" text-anchor="middle" dominant-baseline="central" font-size="13" font-weight="500" fill="#b5d4f4" font-family="system-ui">① 传输层</text>
+<text x="300" y="62" text-anchor="middle" dominant-baseline="central" font-size="11.5" fill="#85b7eb" font-family="system-ui">握手 · 帧编解码 · 心跳 · 同端口 HTTP</text>
+<text x="300" y="78" text-anchor="middle" dominant-baseline="central" font-size="11" fill="#6d768a" font-family="ui-monospace">ws_proto.py / websockets 库</text>
+
+<line x1="404" y1="56" x2="436" y2="56" stroke="#6d768a" stroke-width="1.5" marker-end="url(#a)"/>
+
+<rect x="440" y="24" width="200" height="64" rx="9" fill="#085041" stroke="#5dcaa5" stroke-width="0.5"/>
+<text x="540" y="44" text-anchor="middle" dominant-baseline="central" font-size="13" font-weight="500" fill="#9fe1cb" font-family="system-ui">② 路由层</text>
+<text x="540" y="62" text-anchor="middle" dominant-baseline="central" font-size="11.5" fill="#5dcaa5" font-family="system-ui">信封分发 · 订阅表 · 扇出 · 背压</text>
+<text x="540" y="78" text-anchor="middle" dominant-baseline="central" font-size="11" fill="#6d768a" font-family="ui-monospace">channel.py / runtime.py</text>
+
+<line x1="540" y1="92" x2="540" y2="122" stroke="#6d768a" stroke-width="1.5" marker-end="url(#a)"/>
+
+<rect x="440" y="126" width="200" height="64" rx="9" fill="#3c3489" stroke="#afa9ec" stroke-width="0.5"/>
+<text x="540" y="146" text-anchor="middle" dominant-baseline="central" font-size="13" font-weight="500" fill="#cecbf6" font-family="system-ui">③ 投影层</text>
+<text x="540" y="164" text-anchor="middle" dominant-baseline="central" font-size="11.5" fill="#afa9ec" font-family="system-ui">内部事件 → 线上字段（稳定契约）</text>
+<text x="540" y="180" text-anchor="middle" dominant-baseline="central" font-size="11" fill="#6d768a" font-family="ui-monospace">projector.py / outbound_projection.py</text>
+
+<line x1="436" y1="158" x2="404" y2="158" stroke="#6d768a" stroke-width="1.5" marker-end="url(#a)"/>
+
+<rect x="200" y="126" width="200" height="64" rx="9" fill="#444441" stroke="#b4b2a9" stroke-width="0.5"/>
+<text x="300" y="146" text-anchor="middle" dominant-baseline="central" font-size="13" font-weight="500" fill="#d3d1c7" font-family="system-ui">④ 会话层（总线）</text>
+<text x="300" y="164" text-anchor="middle" dominant-baseline="central" font-size="11.5" fill="#b4b2a9" font-family="system-ui">inbound / outbound 双队列</text>
+<text x="300" y="180" text-anchor="middle" dominant-baseline="central" font-size="11" fill="#6d768a" font-family="ui-monospace">bus.py / bus/queue.py</text>
+
+<line x1="200" y1="158" x2="164" y2="158" stroke="#6d768a" stroke-width="1.5" marker-end="url(#a)"/>
+
+<rect x="40" y="126" width="120" height="64" rx="9" fill="#1e222b" stroke="#282e3a" stroke-width="0.5"/>
+<text x="100" y="148" text-anchor="middle" dominant-baseline="central" font-size="13" font-weight="500" fill="#e7e9ef" font-family="system-ui">Agent 循环</text>
+<text x="100" y="168" text-anchor="middle" dominant-baseline="central" font-size="11" fill="#6d768a" font-family="ui-monospace">loop.py / runner.py</text>
+
+<path d="M300 200 L300 232 L540 232 L540 200" fill="none" stroke="#6d768a" stroke-width="1.5" stroke-dasharray="4 4" marker-end="url(#a)"/>
+<text x="420" y="248" text-anchor="middle" font-size="11.5" fill="#6d768a" font-family="system-ui">下行：事件 → 投影 → 扇出到所有订阅该 chat_id 的连接</text>
+</svg>
+<p class="caption">四层各管一件事，通道（②③）从不参与"内容生成"</p>
+
+<div class="card">
+<h3>为什么不把 Agent 塞进通道里？</h3>
+<p>因为通道的并发模型和 Agent 完全不同。通道要处理"几百条连接同时在线、随时断线重连"，Agent 要处理"一条会话串行执行、可能跑几十分钟"。两者用队列解耦后，各自可以独立限流、独立重启——这就是 <code>bus.py</code> 存在的全部理由。</p>
+</div>
+
+<div class="card">
+<h3>为什么管理器只认识 <code>BaseChannel</code>，却叫得动 <code>WebSocketChannel</code>？</h3>
+<p>这是读这份代码时第一个会绊住人的地方：翻 <code>ChannelManager</code> 会发现它从头到尾没 import 过 <code>WebSocketChannel</code>，所有签名都是 <code>BaseChannel</code>。原因有两层：</p>
+<p><strong>一是多态。</strong><code>self.channels: dict[str, BaseChannel]</code>（<code>manager.py:136</code>）里装的实际对象就是 <code>WebSocketChannel</code> 实例，由 <code>manager.py:216</code> 的 <code>cls(section, self.bus, **kwargs)</code> 造出来。所以 <code>manager.py:380</code> 那句 <code>await channel.start()</code> 按 MRO 查找，命中的是子类的 <code>runtime.py:678</code>，不是基类。</p>
+<p><strong>二是基类那份 <code>start</code> 根本不执行。</strong><code>base.py:74-84</code> 的 <code>start</code> 带 <code>@abstractmethod</code>，函数体只有一个 <code>pass</code>——它是<em>接口契约</em>，不是<em>默认实现</em>。基类里只有 <code>start</code> / <code>stop</code> / <code>send</code> 三个抽象方法（<code>base.py:74、86、91</code>），其余十几个方法（<code>_handle_message</code>、<code>send_delta</code>、<code>is_allowed</code>…）都是带真实逻辑的共享实现。所以 <code>BaseChannel</code> 是"抽象契约 + 模板方法"的混合体，不是纯接口。</p>
+<p>那具体类是<em>怎么</em>被找到的？靠字符串。<code>websocket/manifest.py</code> 只声明 <code>runtime="nanobot.channels.websocket.runtime:WebSocketChannel"</code>，真正 import 推迟到 <code>ChannelPlugin.load_channel_class()</code>（<code>plugin.py:74</code>，注释原文 <em>"Resolve and validate the runtime class only when the channel is needed"</em>）。这个函数还会显式拒绝 <code>channel_cls is BaseChannel</code>（<code>plugin.py:86</code>），也就是基类本身不允许被注册成通道。</p>
+<p>为什么要绕这一圈？因为仓库里有 18 个通道，它们对管理器完全同构——只要能 <code>start/stop/send</code> 加 <code>_handle_message</code> 入总线就够了。若让管理器直接 import 具体类，启动时就会被拖着加载全部通道及其可选依赖（telegram / slack / discord 各家 SDK），任何一个没装就直接崩。字符串路径换来的是：<strong>依赖倒置 + 按需加载 + 缺依赖不致命</strong>。</p>
+<p>唯一一处"具体类型感知"是 <code>manager.py:183</code> 的 <code>if cls.name == "websocket"</code>：因为 WebSocket 通道是唯一需要额外 <code>gateway=</code> 构造参数的通道。注意它比较的是 <code>cls.name</code> 字符串而非 <code>isinstance</code>，所以依赖方向仍然是倒置的。</p>
+<p><strong>对调试的直接后果：</strong>把断点打在 <code>base.py:75</code> 永远不会命中，要打在 <code>runtime.py:678</code>。</p>
+</div>
+
+<div class="card">
+<h3>"插件注册"到底注册了什么？答案是：什么都没注册</h3>
+<p>先纠正一个容易带进来的直觉。如果你写过 Flask 的 <code>app.register_blueprint()</code>，或者接触过 pytest / WordPress 的插件体系，会默认"插件必须有一个注册动作"。nanobot 的通道<strong>完全没有这一步</strong>——没有中心注册表，没有 <code>register()</code> API。<code>pyproject.toml:116</code> 那行 <code>[project.entry-points."nanobot.tools"]</code> 只服务于<em>工具</em>，而且它是注释掉的占位示例。</p>
+<p>那 <code>manifest.py</code> 是什么？它是<strong>声明</strong>，不是注册。整件事只有两步，第二步还不是插件做的：</p>
+<pre><code>① 你做的：建目录 + 摆一份清单         ② 框架做的：自己来翻
+   nanobot/channels/&lt;name&gt;/              registry.py:20 _channel_package_names()
+     ├── manifest.py   ← PLUGIN 变量        └─ pkgutil.iter_modules() 遍历子包
+     ├── runtime.py                            └─ has_channel_package() 只判一件事：
+     └── webui/index.ts                           manifest.py 这个文件在不在
+</code></pre>
+<p>判据就一行（<code>plugin.py:127-131</code>）：<code>files("nanobot.channels").joinpath(name, "manifest.py").is_file()</code>。目录里有没有 <code>manifest.py</code>，决定它是不是一个通道包——<strong>文件系统本身就是注册表</strong>。</p>
+<p><strong>方向是反的：拉，不是推。</strong>传统插件在导入时执行 <code>register()</code> 把自己交给框架（push）；nanobot 是 <code>discover_plugins()</code>（<code>registry.py:30</code>）主动去数目录（pull）。好处很实际：<strong>扫描阶段没有任何副作用</strong>——只 import <code>manifest.py</code>（<code>plugin.py:135</code> 注释原文："Load one package manifest <em>without importing its runtime</em>"），所以 telegram / slack / discord 这些可选 SDK 缺席时，扫描照样跑得通。</p>
+</div>
+
+<div class="card">
+<h3>那"注册表"用什么顶替了？<code>lru_cache</code> 加一张运行期台账</h3>
+<p>没有全局字典，但有两处等价物。</p>
+<p><strong>一是缓存。</strong><code>plugin.py:134</code> 给 <code>load_channel_package</code> 加了 <code>@lru_cache(maxsize=None)</code>。第一次扫到某个通道时走一遍 import + 校验，之后所有调用者（<code>discover_plugins</code>、<code>load_channel_plugin</code>、<code>channel_default_enabled</code>、<code>load_channel_class</code> 最终都汇到它）直接命中缓存。缓存键是通道名，行为上等价于一张只写一次的注册表。</p>
+<p><strong>二是运行期台账。</strong>实例化之后状态记在 <code>ChannelManager</code> 的四个字段（<code>manager.py:136-139</code>）：<code>channels</code>（runtime_name → 实例）、<code>_channel_owners</code>（runtime_name → 插件名）、<code>_channel_runtime_specs</code>（runtime_name → (插件名, instance_id)）、<code>_channel_errors</code>（构造失败原因）。它们都是<em>扫描之后</em>才产生的，不是提前登记来的。注意 <code>channels</code> 的键是 <code>runtime_name</code> 而不是插件名——websocket 没声明多实例，两者才恰好都等于 <code>"websocket"</code>。</p>
+</div>
+
+<div class="card">
+<h3>谁都能摆一份 <code>manifest.py</code>，那凭什么信任它？四道静态校验</h3>
+<p>清单是数据，但校验是硬编码的。按顺序过四关，<strong>全程不导入通道运行时</strong>：</p>
+<p><strong>第 1 关 · 名字与形状合法</strong>（<code>plugin.py:43-72</code>）：<code>ChannelPlugin.__post_init__</code> 用 <code>[A-Za-z][A-Za-z0-9_]*</code> 卡名字，强制 <code>runtime</code> / <code>connector</code> 必须是 <code>module:attr</code> 形态，<code>webui</code> 路径不许带 <code>..</code> 逃出包外。</p>
+<p><strong>第 2 关 · 名实相符</strong>（<code>plugin.py:145</code>）：<code>manifest.py</code> 导出的 <code>PLUGIN.name</code> 必须等于目录名。在 <code>websocket/</code> 里声明 <code>name="telegram"</code> 会直接抛 <code>TypeError</code>。</p>
+<p><strong>第 3 关 · 不许越界</strong>（<code>plugin.py:157-172</code>）：<code>runtime</code> 指向的模块必须以本包为前缀（<code>startswith(f"{package_name}.")</code>），再落到文件系统确认那个 <code>.py</code>（或 <code>__init__.py</code>）真实存在；<code>webui/index.ts</code> 同样要真实存在（<code>plugin.py:173-178</code>）。这条就是"自包含"的技术兑现——清单不能指向别的包。</p>
+<p><strong>第 4 关 · 类型正确</strong>（<code>plugin.py:81-94</code>，推迟到真正要用时才走）：必须 <code>issubclass(BaseChannel)</code>、必须<em>不是</em> <code>BaseChannel</code> 本身、<code>channel_cls.name</code> 必须与 <code>plugin.name</code> 一致。</p>
+<p>任何一关不过，<code>discover_plugins</code> 里的 <code>try/except</code>（<code>registry.py:38-43</code>）只打一条 <code>logger.warning</code> 就<strong>跳过这个通道</strong>，进程照常启动。单个通道写坏，不会拖垮 gateway。</p>
+</div>
+
+<div class="card">
+<h3>对比工具侧：那里才是真插件机制，而通道故意不开放</h3>
+<p>同一个代码库里，<code>nanobot/agent/tools/loader.py:68-87</code> 的 <code>_discover_plugins</code> 走的是标准 <code>importlib.metadata.entry_points(group="nanobot.tools")</code>：第三方包 <code>pip install</code> 后只要在自己的 <code>pyproject.toml</code> 里声明条目就能被收集，校验也宽松得多（<code>issubclass(Tool)</code> 即可）。</p>
+<p><strong>通道侧没有这个分支。</strong><code>_channel_package_names()</code>（<code>registry.py:21-27</code>）扫的是 <code>nanobot/channels/</code> 这个<em>固定物理目录</em>，没有 <code>entry_points</code> 调用。想加新通道，你必须把目录放进 nanobot 自己的源码树——<strong>外部 pip 包装不进来</strong>。这是刻意的取舍：通道要处理凭证、权限、握手，收紧边界比开放生态更重要。</p>
+</div>
+
+<h2 id="handshake">2 · 握手与 ready：第一条消息不是"hello"</h2>
+<p>WebSocket 的握手本质是一次 HTTP 请求升级。客户端发：</p>
+<pre><code>GET /?client_id=lab-abc HTTP/1.1
+Host: 127.0.0.1:9988
+Upgrade: websocket
+Connection: Upgrade
+Sec-WebSocket-Key: bmFub2JvdC13cy1sYWIta2V5
+Sec-WebSocket-Version: 13</code></pre>
+<p>服务端必须回一个"证明我看懂了你的 key"的值，算法是固定的哈希：</p>
+<pre><code>Sec-WebSocket-Accept = base64( sha1( Sec-WebSocket-Key + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11" ) )</code></pre>
+<p class="file">src/ws_proto.py · accept_key()</p>
+
+<div class="warn"><b>注意：</b>这个 GUID 是 RFC 6455 写死的常量，不是可配置项。测试里我用官方示例做了断言校验：<code>accept_key("dGhlIHNhbXBsZSBub25jZQ==") == "s3pPLMBiTxaQ9kYGzzhZRbK+xOo="</code>。</div>
+
+<h3>握手成功后，服务端先说话</h3>
+<p>连接建立后<b>服务端主动推第一条消息</b>，而不是等客户端发：</p>
+<pre><code>{"event":"ready","chat_id":"47076dbc-...","client_id":"lab-abc"}</code></pre>
+<p class="file">src/channel.py · _connection_loop() ／ nanobot runtime.py:794</p>
+
+<p>这条 <code>ready</code> 里的 <code>chat_id</code> 就是这条连接的默认会话。客户端必须等它到了才能发消息——因为它得知道往哪个会话里发。</p>
+
+<div class="danger"><b>顺序陷阱：</b>必须先 <code>await connection.send_text(ready)</code>，再把连接登记进订阅表。如果先登记后发送，一旦发送失败，订阅表里就留下一个"永远不会被唤醒"的僵尸连接，它占着内存却收不到任何东西。真实代码里有明确的注释说明这一点（<code>runtime.py:823</code> "Register only after ready is successfully sent to avoid out-of-order sends"）。</div>
+
+<div class="key"><b>TUI 的差异点：</b>终端 UI 连的是同一个服务端，只是在 URL 上多带一个 <code>?terminal_protocol=1</code>，服务端就会在 <code>ready</code> 里多回一段 <code>terminal: {protocolVersion, gatewayId}</code> 用于身份校验。除了这段额外字段，两边的后续流程完全一致。</div>
+
+<h2 id="inbound">3 · 入站信封：怎么识别"这是结构化请求"而不是"用户随便打的字"</h2>
+<p>连接上的每一帧文本都要先判断类型。策略很简单——<b>能解析成带 <code>type</code> 字段的 JSON 就当信封，否则当裸文本消息</b>：</p>
+<pre><code>def _parse_envelope(raw: str) -&gt; dict | None:
+    text = raw.strip()
+    if not text.startswith("{"):          # 快速否决，避免无谓的 json 解析
+        return None
+    try:
+        parsed = json.loads(text)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(parsed, dict) or "type" not in parsed:
+        return None                        # 有 JSON 但没 type，仍不算信封
+    return parsed</code></pre>
+<p class="file">src/channel.py · _parse_envelope() ／ nanobot runtime.py:836</p>
+
+<p>然后是分发。迷你版只实现三种类型，真实版有十几种：</p>
+<table>
+<thead><tr><th>type</th><th>载荷字段</th><th>作用</th><th>真实实现位置</th></tr></thead>
+<tbody>
+<tr><td><code>message</code></td><td>chat_id, content, turn_id</td><td>用户真实输入，进总线</td><td><code>webui/inbound_commands.py:473</code></td></tr>
+<tr><td><code>attach</code></td><td>chat_id</td><td>切会话 / 订阅另一个 chat</td><td><code>inbound_commands.py</code> attach 分支</td></tr>
+<tr><td><code>ping</code></td><td>echo</td><td>应用层探活</td><td>—</td></tr>
+<tr><td colspan="2" style="color:var(--dim)">真实的还有：<code>fork_chat</code>、<code>set_workspace_scope</code>、<code>transcribe_audio</code>、<code>new_chat</code>、<code>update_recovery</code>…</td><td colspan="2" style="color:var(--dim)">全部在同一个 router 里按 type 分支</td></tr>
+</tbody>
+</table>
+
+<h3>从信封到总线：三跳</h3>
+<pre><code>_dispatch_envelope()        # 按 type 分发          runtime.py:861
+  └─ _dispatch_message()    # 校验 chat_id/content   inbound_commands.py:482
+       └─ _handle_message() # 构造 InboundMessage    channels/base.py:255
+            └─ bus.publish_inbound(msg)             bus/queue.py:37</code></pre>
+<p>这一跳之后就<b>与通道彻底无关</b>了：Agent 看到的只是一个 <code>InboundMessage</code>，它不知道消息来自浏览器、Telegram 还是终端。</p>
+
+<div class="warn"><b>别跳过校验：</b><code>inbound_commands.py:482</code> 里那一大段"校验 chat_id 格式 → 检查 client 是否被允许 → 校验 content 类型 → 长度/内容策略 → 附件处理"看起来啰嗦，但它是唯一一道能把恶意输入挡在 Agent 之外的关卡。Agent 拿到消息就开始调工具、读文件了。</div>
+
+<h2 id="subs">4 · 订阅模型：为什么开三个标签页都能收到</h2>
+<p>通道里最核心的两个数据结构，就是两个方向相反的索引：</p>
+<pre><code>self._subs:        dict[chat_id, set[connection]]   # 谁在听这个会话？（扇出用）
+self._conn_chats:  dict[connection, set[chat_id]]   # 这条连接听了哪些会话？（清理用）</code></pre>
+<p class="file">src/channel.py · __init__() ／ nanobot runtime.py:377-380</p>
+
+<svg viewBox="0 0 680 250" xmlns="http://www.w3.org/2000/svg" role="img">
+<title>chat_id 到多个连接的扇出结构</title>
+<defs><marker id="b" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+<path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></marker></defs>
+<rect x="40" y="100" width="150" height="52" rx="9" fill="#085041" stroke="#5dcaa5" stroke-width="0.5"/>
+<text x="115" y="118" text-anchor="middle" dominant-baseline="central" font-size="13" font-weight="500" fill="#9fe1cb" font-family="system-ui">chat_id = "c1"</text>
+<text x="115" y="136" text-anchor="middle" dominant-baseline="central" font-size="11.5" fill="#5dcaa5" font-family="system-ui">_subs["c1"]</text>
+<line x1="194" y1="126" x2="238" y2="126" stroke="#6d768a" stroke-width="1.5"/>
+<line x1="238" y1="50" x2="238" y2="200" stroke="#6d768a" stroke-width="1.5"/>
+<line x1="238" y1="50" x2="272" y2="50" stroke="#6d768a" stroke-width="1.5" marker-end="url(#b)"/>
+<line x1="238" y1="126" x2="272" y2="126" stroke="#6d768a" stroke-width="1.5" marker-end="url(#b)"/>
+<line x1="238" y1="200" x2="272" y2="200" stroke="#6d768a" stroke-width="1.5" marker-end="url(#b)"/>
+<rect x="276" y="26" width="200" height="48" rx="9" fill="#1e222b" stroke="#282e3a" stroke-width="0.5"/>
+<text x="376" y="50" text-anchor="middle" dominant-baseline="central" font-size="12.5" fill="#e7e9ef" font-family="system-ui">连接 A（笔记本浏览器）</text>
+<rect x="276" y="102" width="200" height="48" rx="9" fill="#1e222b" stroke="#282e3a" stroke-width="0.5"/>
+<text x="376" y="126" text-anchor="middle" dominant-baseline="central" font-size="12.5" fill="#e7e9ef" font-family="system-ui">连接 B（手机浏览器）</text>
+<rect x="276" y="176" width="200" height="48" rx="9" fill="#1e222b" stroke="#282e3a" stroke-width="0.5"/>
+<text x="376" y="200" text-anchor="middle" dominant-baseline="central" font-size="12.5" fill="#e7e9ef" font-family="system-ui">连接 C（终端 TUI）</text>
+<rect x="500" y="102" width="140" height="48" rx="9" fill="#23324f" stroke="#7aa2f7" stroke-width="0.5"/>
+<text x="570" y="120" text-anchor="middle" dominant-baseline="central" font-size="12.5" font-weight="500" fill="#c9d5f5" font-family="system-ui">同一条助手回复</text>
+<text x="570" y="137" text-anchor="middle" dominant-baseline="central" font-size="11" fill="#7aa2f7" font-family="system-ui">fan-out 到三端</text>
+</svg>
+<p class="caption">一次 Agent 回复 → 三个连接同时收到；每个连接各自排队，互不影响</p>
+
+<p>扇出代码只有四行，但有个关键细节：</p>
+<pre><code>connections = self.subscribers(msg.chat_id)   # 返回 tuple(...)，先拷贝！
+for connection in connections:
+    await self._safe_send_to(connection, raw, label=...)</code></pre>
+<p class="file">src/channel.py · send() ／ nanobot runtime.py:1175 + outbound_projection.py:138</p>
+<div class="danger"><b>为什么必须拷贝？</b>因为在遍历过程中，某个连接的发送失败会触发断线清理，而清理会 <code>_detach</code>——也就是<b>修改正在被遍历的那个 set</b>。Python 会直接抛 <code>RuntimeError: Set changed size during iteration</code>。真实实现用 <code>tuple(self._subs.get(chat_id, ()))</code> 就是为了这个。</div>
+
+<h2 id="outbound">5 · 出站投影：三件套 delta / stream_end / message</h2>
+<p>Agent 内部产生的事件种类很多，但<b>线上字段是稳定契约</b>。投影层负责翻译，认不出的事件直接丢弃：</p>
+<table>
+<thead><tr><th>内部事件</th><th>线上 event</th><th>关键字段</th><th>客户端该怎么做</th></tr></thead>
+<tbody>
+<tr><td>进度/思考</td><td><code>message</code></td><td><code>kind: "progress"</code></td><td>渲染成从属轨迹行，别当正式回复</td></tr>
+<tr><td>工具调用</td><td><code>message</code></td><td><code>kind: "tool_hint"</code></td><td>同上，可折叠</td></tr>
+<tr><td>流式 token</td><td><code>delta</code></td><td><code>text</code>, <code>stream_id</code></td><td>就地追加到同一个气泡</td></tr>
+<tr><td>一段流结束</td><td><code>stream_end</code></td><td><code>stream_id</code>, <code>resuming</code></td><td>去掉光标；<code>resuming</code> 表示后面还有</td></tr>
+<tr><td>最终回复</td><td><code>message</code></td><td><code>text</code>, <code>turn_id</code>, <code>latency_ms</code></td><td>以它为准落库，覆盖流式期间的累积</td></tr>
+<tr><td>未知事件</td><td colspan="2" style="color:var(--dim)">丢弃，不下发</td><td style="color:var(--dim)">保证老客户端不被新事件打挂</td></tr>
+</tbody>
+</table>
+<p class="file">src/projector.py · project() ／ nanobot webui/outbound_projection.py + outbound_wire.py</p>
+
+<div class="key"><b>为什么不能只发 delta？</b>因为 delta 是不可靠的增量流——网络抖动、浏览器后台挂起都可能丢帧，客户端累积出来的文本就是残缺的。所以协议用 <code>stream_end</code> 标记边界、用最后一条 <code>message</code> 给出<b>权威全文</b>。客户端策略是"流式期间渲染 delta 求快，收到 message 后以 message 为准求准"。<br><br>真实实现还多一层保险：<code>stream_end</code> 时会把服务端缓冲区里的全文一起带上（<code>runtime.py:1330 send_delta()</code> 里的 <code>completed_text</code>），客户端可据此校正。</div>
+
+<h2 id="pressure">6 · 背压：整个通道最值得学的一处设计</h2>
+<p>先看问题：Agent 正在流式输出，一秒推 200 个 delta。这时某个客户端网络卡住了（地铁进隧道、浏览器标签被挂起）。如果服务端只是 <code>await connection.send(...)</code>，会发生什么？</p>
+
+<svg viewBox="0 0 680 260" xmlns="http://www.w3.org/2000/svg" role="img">
+<title>慢客户端阻塞全局 vs 每连接独立队列</title>
+<rect x="40" y="30" width="270" height="200" rx="12" fill="#1f1414" stroke="#5c2323" stroke-width="0.5"/>
+<text x="175" y="52" text-anchor="middle" font-size="13" font-weight="500" fill="#f09595" font-family="system-ui">✗ 直接 await 发送</text>
+<rect x="70" y="72" width="90" height="40" rx="7" fill="#23324f" stroke="#7aa2f7" stroke-width="0.5"/>
+<text x="115" y="92" text-anchor="middle" dominant-baseline="central" font-size="11.5" fill="#c9d5f5" font-family="system-ui">Agent 推流</text>
+<line x1="164" y1="92" x2="196" y2="92" stroke="#f09595" stroke-width="1.5"/>
+<rect x="200" y="72" width="90" height="40" rx="7" fill="#2b1a1a" stroke="#f09595" stroke-width="0.5"/>
+<text x="245" y="92" text-anchor="middle" dominant-baseline="central" font-size="11.5" fill="#f09595" font-family="system-ui">慢连接</text>
+<text x="175" y="136" text-anchor="middle" font-size="11.5" fill="#9aa3b5" font-family="system-ui">发送阻塞 → 循环停在这一行</text>
+<text x="175" y="156" text-anchor="middle" font-size="11.5" fill="#9aa3b5" font-family="system-ui">→ 排队中的其他客户端也收不到</text>
+<text x="175" y="176" text-anchor="middle" font-size="11.5" fill="#9aa3b5" font-family="system-ui">→ 内存里 delta 无限堆积</text>
+<text x="175" y="204" text-anchor="middle" font-size="12" font-weight="500" fill="#f09595" font-family="system-ui">一个坏客户端拖垮所有人</text>
+
+<rect x="370" y="30" width="270" height="200" rx="12" fill="#0f1e1a" stroke="#1e3a30" stroke-width="0.5"/>
+<text x="505" y="52" text-anchor="middle" font-size="13" font-weight="500" fill="#5dcaa5" font-family="system-ui">✓ 每连接独立队列</text>
+<rect x="392" y="72" width="70" height="40" rx="7" fill="#23324f" stroke="#7aa2f7" stroke-width="0.5"/>
+<text x="427" y="92" text-anchor="middle" dominant-baseline="central" font-size="11.5" fill="#c9d5f5" font-family="system-ui">Agent</text>
+<line x1="466" y1="92" x2="486" y2="92" stroke="#6d768a" stroke-width="1.5"/>
+<rect x="490" y="72" width="60" height="40" rx="7" fill="#1e222b" stroke="#282e3a" stroke-width="0.5"/>
+<text x="520" y="86" text-anchor="middle" dominant-baseline="central" font-size="10.5" fill="#9aa3b5" font-family="system-ui">队列 A</text>
+<text x="520" y="100" text-anchor="middle" dominant-baseline="central" font-size="10.5" fill="#5dcaa5" font-family="system-ui">快</text>
+<rect x="490" y="126" width="60" height="40" rx="7" fill="#2b1a1a" stroke="#f09595" stroke-width="0.5"/>
+<text x="520" y="140" text-anchor="middle" dominant-baseline="central" font-size="10.5" fill="#9aa3b5" font-family="system-ui">队列 B</text>
+<text x="520" y="154" text-anchor="middle" dominant-baseline="central" font-size="10.5" fill="#f09595" font-family="system-ui">慢→断开</text>
+<rect x="560" y="99" width="62" height="40" rx="7" fill="#1e222b" stroke="#282e3a" stroke-width="0.5"/>
+<text x="591" y="119" text-anchor="middle" dominant-baseline="central" font-size="10.5" fill="#9aa3b5" font-family="system-ui">各自写任务</text>
+<text x="505" y="192" text-anchor="middle" font-size="11.5" fill="#9aa3b5" font-family="system-ui">put_nowait 从不阻塞；</text>
+<text x="505" y="210" text-anchor="middle" font-size="11.5" fill="#9aa3b5" font-family="system-ui">超限只断开这一个连接</text>
+</svg>
+<p class="caption">head-of-line blocking 的经典解法：把"可能阻塞的等待"从共享路径移进每连接私有队列</p>
+
+<p>三道闸门，数字都来自真实实现（<code>runtime.py:68-72</code>）：</p>
+<table>
+<thead><tr><th>闸门</th><th>迷你版</th><th>nanobot 真实值</th><th>超限后果</th></tr></thead>
+<tbody>
+<tr><td>队列帧数上限</td><td><code>max_frames=256</code></td><td><code>_OUTBOUND_QUEUE_MAX_FRAMES = 256</code></td><td>断开该连接（close code 1013）</td></tr>
+<tr><td>未发字节上限</td><td><code>max_bytes=8 MiB</code></td><td><code>_OUTBOUND_QUEUE_MAX_BYTES = 8 * 1024 * 1024</code></td><td>断开该连接</td></tr>
+<tr><td>单帧发送超时</td><td><code>send_timeout_s=10</code></td><td><code>_OUTBOUND_SEND_TIMEOUT_S = 10.0</code></td><td>断开该连接</td></tr>
+</tbody>
+</table>
+
+<pre><code>async def _safe_send_to(self, connection, raw, *, label=""):
+    state = self._connection_outbound.get(connection)
+    if state is None or state.closing:
+        return                                   # 已退役：静默丢弃
+
+    utf8_bytes = len(raw.encode("utf-8"))         # 按字节算，不按字符算
+    if state.queue.full() or state.buffered_bytes + utf8_bytes &gt; self.config.max_bytes:
+        self._retire(connection, state, reason="outbound queue full")   # 只踢这一个
+        return
+
+    try:
+        state.queue.put_nowait(_Frame(raw, utf8_bytes, label))          # 永不阻塞
+    except asyncio.QueueFull:
+        self._retire(connection, state, reason="outbound queue full")
+        return
+
+    state.buffered_bytes += utf8_bytes
+    self._start_writer(connection, state)
+    await asyncio.sleep(0)    # 让空闲的写任务有机会立刻跑起来</code></pre>
+<p class="file">src/channel.py · _safe_send_to() ／ nanobot runtime.py:1052</p>
+
+<div class="key"><b>三个容易忽略的细节：</b>
+<ol>
+<li><b>按字节而不是字符计数。</b>中文一个字 3 字节，用 <code>len(str)</code> 会让内存预算变成三分之一。</li>
+<li><b>写任务是"用完即走"的。</b>队列空了就 return，不当常驻协程。发送时如果又有新帧入队，<code>finally</code> 里会补起一个新任务——这样避免了几千条空闲连接各养一个空转协程。</li>
+<li><b>断开是异步的（retire），不是同步 close。</b>投递路径绝不等待网络 I/O，只标记 <code>closing=True</code> 并丢一个任务出去。</li>
+</ol></div>
+
+<div class="warn"><b>动手验证：</b>把 <code>src/channel.py</code> 里的 <code>LocalConfig.max_frames</code> 改成 <code>2</code>，重启服务，在浏览器连发几轮消息，终端就会打出 <code>[backpressure] 断开慢客户端: 2 帧, 14 字节待发</code>。这是最直观的一次背压演示。</div>
+
+<h2 id="lifecycle">7 · 连接生命周期：断开时到底要清理什么</h2>
+<p>WebSocket 是"随时可能断"的协议——网线拔了、笔记本合盖、进程被 kill，都不会有优雅的 close 帧。所以清理逻辑必须做到<b>幂等且可多次调用</b>：</p>
+<pre><code>async def _cleanup_connection(self, connection):
+    state = self._connection_outbound.get(connection)
+    if state is not None:
+        state.closing = True
+        writer = state.writer
+        if writer is not None and writer is not current and not writer.done():
+            writer.cancel()                          # 停掉写任务
+            await asyncio.gather(writer, return_exceptions=True)
+        while True:                                  # 清空队列，释放内存
+            try: state.queue.get_nowait()
+            except asyncio.QueueEmpty: break
+        state.buffered_bytes = 0
+        self._connection_outbound.pop(connection, None)
+
+    for chat_id in tuple(self._conn_chats.get(connection, ())):
+        self._detach(connection, chat_id)             # 双向索引都要摘
+    self._conn_default.pop(connection, None)</code></pre>
+<p class="file">src/channel.py · _cleanup_connection() ／ nanobot runtime.py:509</p>
+
+<div class="danger"><b>为什么必须先 <code>tuple(...)</code> 再遍历？</b>因为 <code>_detach</code> 会修改 <code>_conn_chats</code>——也就是正在遍历的容器本身。这是本教程里第二次出现同一个陷阱，说明它在真实代码里是高频问题。</div>
+<p>还有两个防泄漏设计值得注意：</p>
+<ul>
+<li><b>弱引用集合防僵尸：</b>真实实现用 <code>WeakSet[ServerConnection]</code> 记录已退役连接（<code>runtime.py:388</code>），即使某处漏了清理，对象也会被 GC 回收，而不是永久留在字典里。</li>
+<li><b>退役后拒绝重新登记：</b><code>_register_connection_outbound</code> 会先检查 <code>connection in self._retired_connections</code>，防止一条已关闭的连接因为竞态又被加回订阅表。</li>
+</ul>
+
+<h2 id="map-table">8 · 完整对照表</h2>
+<p>读真实代码时按这张表跳转，就不会被五千行吓到：</p>
+<table>
+<thead><tr><th>能力</th><th>迷你实现</th><th>nanobot 真实位置</th></tr></thead>
+<tbody>
+<tr><td>配置项</td><td><code>src/channel.py</code> LocalConfig</td><td><code>runtime.py:174</code> WebSocketConfig</td></tr>
+<tr><td>待发帧 / 连接出站状态</td><td><code>_Frame</code> / <code>_ConnOutbound</code></td><td><code>runtime.py:348</code> / <code>:355</code></td></tr>
+<tr><td>类定义</td><td><code>MiniWebSocketChannel</code></td><td><code>runtime.py:363</code> WebSocketChannel</td></tr>
+<tr><td>订阅 / 退订</td><td><code>_attach</code> / <code>_detach</code></td><td><code>runtime.py:473</code> / <code>:482</code></td></tr>
+<tr><td>连接主循环</td><td><code>_connection_loop</code></td><td><code>runtime.py:794</code></td></tr>
+<tr><td>信封解析</td><td><code>_parse_envelope</code></td><td><code>runtime.py:836</code></td></tr>
+<tr><td>信封分发</td><td><code>_dispatch_envelope</code></td><td><code>runtime.py:861</code> → <code>webui/inbound_commands.py:473</code></td></tr>
+<tr><td>消息校验</td><td><code>_dispatch_message</code></td><td><code>inbound_commands.py:482</code></td></tr>
+<tr><td>构造入站消息</td><td><code>_handle_message</code></td><td><code>channels/base.py:255</code>（构造 :310，入队 :321）</td></tr>
+<tr><td>背压投递</td><td><code>_safe_send_to</code></td><td><code>runtime.py:1052</code></td></tr>
+<tr><td>写循环</td><td><code>_drain_connection_outbound</code></td><td><code>runtime.py:946</code></td></tr>
+<tr><td>退役连接</td><td><code>_retire</code> / <code>_retire_connection</code></td><td><code>runtime.py:1023</code> / <code>:1033</code></td></tr>
+<tr><td>清理</td><td><code>_cleanup_connection</code></td><td><code>runtime.py:509</code></td></tr>
+<tr><td>出站投影</td><td><code>projector.project()</code></td><td><code>webui/outbound_projection.py:138</code></td></tr>
+<tr><td>普通消息序列化</td><td>—</td><td><code>runtime.py:1182</code> send_projected_message</td></tr>
+<tr><td>流式 delta</td><td>—</td><td><code>runtime.py:1330</code> send_delta</td></tr>
+<tr><td>出站分发循环</td><td><code>dispatch_outbound</code></td><td><code>channels/manager.py:767</code></td></tr>
+<tr><td>握手鉴权 / 一次性 token</td><td>—</td><td><code>runtime.py:562</code> _dispatch_http → <code>webui/ws_http.py:666</code></td></tr>
+<tr><td>监听器自愈（退避重启）</td><td>—</td><td><code>runtime.py:678</code> start() 内 runner()</td></tr>
+</tbody>
+</table>
+
+<div class="card">
+<h3>迷你版故意省略的部分（你已经掌握主干后才需要看）</h3>
+<ul>
+<li><b>鉴权：</b>allowFrom 白名单、pairing 配对码、<code>/webui/bootstrap</code> 一次性 token、可信代理断言。</li>
+<li><b>业务路由：</b><code>inbound_commands.py</code> 里十几种 envelope type（fork / workspace scope / 语音转写…）。</li>
+<li><b>持久化：</b>transcript 落盘、断线后 <code>hydrate</code> 重放、turn 归属与"记录失败"标记。</li>
+<li><b>生命周期运营：</b>监听器掉线自动退避重启、慢连接队列的字节统计、SSL/WSS、Unix socket 模式。</li>
+</ul>
+<p style="color:var(--muted);margin-bottom:0">这些都不改变主干：<b>信封进 → 总线 → Agent → 投影 → 每连接队列扇出</b>。</p>
+</div>
+
+<h2 id="pitfalls">9 · 六个坑（都在这份迷你实现里踩过或刻意保留）</h2>
+
+<div class="card"><h3>坑 1 · 只 <code>_subs.add()</code> 却没建出站队列</h3>
+<p>订阅成功了，但消息一条都发不出去。我写第一版时就是这么错的：<code>_safe_send_to</code> 里 <code>state = self._connection_outbound.get(connection)</code> 拿到 <code>None</code>，直接 <code>return</code> 静默丢弃。</p>
+<p><b>正解：</b><code>_attach</code> 里第一步就是 <code>_ensure_outbound(connection)</code>（真实实现对应 <code>_register_connection_outbound</code>）。这个 bug 是测试帮我抓出来的——<code>test_fan_out_to_all_subscribers</code> 断言失败，<code>0 != 1</code>。</p></div>
+
+<div class="card"><h3>坑 2 · 遍历 set 时修改它</h3>
+<p>扇出时某个连接发送失败 → 触发清理 → <code>_detach</code> 改 set → <code>RuntimeError</code>。<b>正解：</b>一律 <code>tuple(...)</code> 快照后遍历。</p></div>
+
+<div class="card"><h3>坑 3 · 先登记连接再发 ready</h3>
+<p>ready 发送失败就留下僵尸订阅。顺序必须是：<b>发 ready → 登记订阅</b>。</p></div>
+
+<div class="card"><h3>坑 4 · 用字符数当内存预算</h3>
+<p>中文一字符 3 字节，用 <code>len(text)</code> 会让 8 MiB 预算实际占用 24 MiB。<b>正解：</b><code>len(raw.encode("utf-8"))</code>。</p></div>
+
+<div class="card"><h3>坑 5 · 把 <code>kind: tool_hint</code> 当正式回复渲染</h3>
+<p>客户端如果不区分 <code>kind</code>，"调用工具 read_file(...)"这种面包屑会和助手最终答案混在一起，对话看起来支离破碎。<b>正解：</b>从属轨迹行单独渲染。</p></div>
+
+<div class="card"><h3>坑 6 · 让写任务常驻空转</h3>
+<p>每条连接养一个 <code>while True</code> 的写协程，一万条空闲连接就是一万个协程。真实实现是"有帧才起、发完就退"，<code>finally</code> 里补跑兜底。</p></div>
+
+<h2 id="quiz">10 · 自测与动手练习</h2>
+
+<div class="q"><b>Q1</b> 为什么服务端要主动发 <code>ready</code>，而不是等客户端先发一条 <code>{"type":"hello"}</code>？<br>
+<details><summary>看答案</summary>因为 <code>chat_id</code> 由服务端分配（<code>uuid4</code>），客户端在收到它之前无法构造合法的 <code>message</code> 信封。让服务端先说话，就把"分配会话标识"和"建立连接"合并成一次往返，客户端逻辑更简单。</details></div>
+
+<div class="q"><b>Q2</b> 三个浏览器标签都开着同一个 <code>chat_id</code>，其中一个崩溃了。其他两个会受影响吗？为什么？<br>
+<details><summary>看答案</summary>不受影响。①崩溃连接的清理只会 <code>_detach</code> 它自己；②每条连接有独立出站队列和独立写任务，一个连接的发送阻塞不会占用共享路径；③扇出用快照遍历，中途的集合变更不会破坏循环。</details></div>
+
+<div class="q"><b>Q3</b> 如果只发 <code>delta</code>、去掉 <code>stream_end</code> 和最终 <code>message</code>，会出什么问题？<br>
+<details><summary>看答案</summary>丢帧后客户端会永久显示残缺文本（没有权威全文可校正）；客户端也无法知道"这段说完了"，光标一直闪；服务端缓冲区不会被释放（真实实现里 <code>stream_end</code> 携带 <code>completed_text</code> 并清空 buffer）。</details></div>
+
+<div class="q"><b>Q4</b> <code>_safe_send_to</code> 里那句 <code>await asyncio.sleep(0)</code> 有什么用？<br>
+<details><summary>看答案</summary>把控制权交还事件循环，让刚被 <code>_start_writer</code> 创建的写任务有机会立刻开始执行。没有它，如果调用方一直在同步循环里投递（比如一口气投几百个 delta），写任务可能饿死到本次投递全部结束才启动，造成延迟毛刺。</details></div>
+
+<div class="q"><b>Q5</b> 为什么超限时选择"断开连接"而不是"丢弃最老的帧"？<br>
+<details><summary>看答案</summary>因为聊天消息有语义完整性要求。丢掉中间几帧会让对话内容错乱，而客户端无法察觉。断开连接则是<b>可恢复的显式失败</b>：客户端重连后会走 <code>hydrate</code> 重放权威历史，用户看到的仍是完整对话。真实实现也是这个取舍。</details></div>
+
+<h3>动手练习（按难度递增）</h3>
+<ol>
+<li><b>观察协议。</b>跑起服务，在浏览器里发 <code>/help</code>，对比它和普通消息在示波器里的事件差异（提示：命令类不发 delta）。</li>
+<li><b>触发背压。</b>把 <code>max_frames</code> 改成 2，观察终端日志；再改成 1 试试会怎样。</li>
+<li><b>加一个事件类型。</b>在 <code>projector.py</code> 里加一条 <code>file_edit</code> 投影，在 <code>agent.py</code> 里发出来，在前端渲染成一行"已修改 xxx"。做完你就完整走了一遍"内部事件 → 线上字段 → 客户端渲染"。</li>
+<li><b>实现断线重放。</b>给 channel 加一个内存字典 <code>_history[chat_id] = [payload...]</code>，在 <code>attach</code> 时把历史推给新订阅者——这就是真实实现 <code>_hydrate_after_subscribe</code>（<code>runtime.py:526</code>）的雏形。</li>
+<li><b>加鉴权。</b>给握手加 <code>token</code> 查询参数校验，对照 <code>webui/gateway_endpoint.py</code> 与 <code>ws_http.py:_handle_bootstrap</code> 阅读。</li>
+<li><b>读真实代码。</b>打开 <code>nanobot/channels/websocket/runtime.py</code>，从 <code>:363</code> 的类定义开始，按第 8 节对照表逐个跳读。</li>
+</ol>
+
+<div class="key" style="margin-top:28px"><b>一句话总结：</b>WebSocket 通道的本质是<b>一个带背压的事件路由器</b>。<br>
+握手拿到身份 → 信封解析出意图 → 消息投给总线 → Agent 产出事件 → 投影成稳定字段 → 按 chat_id 扇出到每连接独立队列 → 超限就断开慢连接。<br>把这条主干记住，剩下的五千行都只是它的工程化加固。</div>
+
+</main>
+</div>
+</body>
+</html>
